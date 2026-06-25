@@ -9,6 +9,7 @@ from typing import Type, Dict, List, Any
 from . import util
 from . import assets
 from . import exceptions
+from .draft_content_loader import FallbackLoader, load_draft_content
 from .template_mode import ImportedTrack, EditableTrack, ImportedMediaTrack, ImportedTextTrack, ShrinkMode, ExtendMode, import_track
 from .time_util import Timerange, tim, srt_tstamp
 from .local_materials import VideoMaterial, AudioMaterial
@@ -207,22 +208,15 @@ class ScriptFile:
         with open(assets.get_asset_path('DRAFT_CONTENT_TEMPLATE'), "r", encoding="utf-8") as f:
             self.content = json.load(f)
 
-    @staticmethod
-    def load_template(json_path: str) -> "ScriptFile":
-        """从JSON文件加载草稿模板
-
-        Args:
-            json_path (str): JSON文件路径
-
-        Raises:
-            `FileNotFoundError`: JSON文件不存在
-        """
-        obj = ScriptFile(**util.provide_ctor_defaults(ScriptFile))
+    @classmethod
+    def _load_template(
+        cls,
+        json_path: str,
+        fallback_loader: Optional[FallbackLoader] = None,
+    ) -> "ScriptFile":
+        obj = cls(**util.provide_ctor_defaults(cls))
         obj.save_path = json_path
-        if not os.path.exists(json_path):
-            raise FileNotFoundError("JSON文件 '%s' 不存在" % json_path)
-        with open(json_path, "r", encoding="utf-8") as f:
-            obj.content = json.load(f)
+        obj.content = load_draft_content(json_path, fallback_loader=fallback_loader)
 
         util.assign_attr_with_json(obj, ["fps", "duration"], obj.content)
         util.assign_attr_with_json(obj, ["maintrack_adsorb"], obj.content["config"])

@@ -3,9 +3,10 @@
 import os
 import shutil
 
-from typing import List
+from typing import List, Optional
 
 from . import assets
+from .draft_content_loader import FallbackLoader
 from .script_file import ScriptFile
 
 class DraftFolder:
@@ -13,17 +14,26 @@ class DraftFolder:
 
     folder_path: str
     """根路径"""
+    fallback_loader: Optional[FallbackLoader]
+    """明文 JSON 读取失败后的后备读取器"""
 
-    def __init__(self, folder_path: str):
+    def __init__(
+        self,
+        folder_path: str,
+        fallback_loader: Optional[FallbackLoader] = None,
+    ):
         """初始化草稿文件夹管理器
 
         Args:
             folder_path (`str`): 包含若干草稿的文件夹, 一般取剪映保存草稿的位置即可
+            fallback_loader (`Callable`, optional): 当`draft_content.json`无法按明文 JSON 读取时使用的后备读取器.
+                其输入为文件原始字节串, 返回值仅支持 JSON 字符串或字典.
 
         Raises:
             `FileNotFoundError`: 路径不存在
         """
         self.folder_path = folder_path
+        self.fallback_loader = fallback_loader
 
         if not os.path.exists(self.folder_path):
             raise FileNotFoundError(f"根文件夹 {self.folder_path} 不存在")
@@ -119,12 +129,17 @@ class DraftFolder:
 
         Raises:
             `FileNotFoundError`: 对应的草稿不存在
+            `DraftContentLoadFailed`: 草稿内容不是合法明文 JSON，且未提供可用的`fallback_loader`，
+                或`fallback_loader`返回了非法结果
         """
         draft_path = os.path.join(self.folder_path, draft_name)
         if not os.path.exists(draft_path):
             raise FileNotFoundError(f"草稿文件夹 {draft_name} 不存在")
 
-        return ScriptFile.load_template(os.path.join(draft_path, "draft_content.json"))
+        return ScriptFile._load_template(
+            os.path.join(draft_path, "draft_content.json"),
+            fallback_loader=self.fallback_loader,
+        )
 
     def duplicate_as_template(self, template_name: str, new_draft_name: str, allow_replace: bool = False) -> ScriptFile:
         """复制一份给定的草稿, 并在复制出的新草稿上进行编辑
@@ -140,6 +155,8 @@ class DraftFolder:
         Raises:
             `FileNotFoundError`: 原始草稿不存在
             `FileExistsError`: 已存在与`new_draft_name`重名的草稿, 但不允许覆盖.
+            `DraftContentLoadFailed`: 复制出的草稿内容不是合法明文 JSON，且未提供可用的`fallback_loader`，
+                或`fallback_loader`返回了非法结果
         """
         template_path = os.path.join(self.folder_path, template_name)
         new_draft_path = os.path.join(self.folder_path, new_draft_name)
