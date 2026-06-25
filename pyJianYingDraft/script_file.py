@@ -22,6 +22,7 @@ from .track import TrackType, BaseTrack, Track
 
 from .metadata import VideoSceneEffectType, VideoCharacterEffectType, FilterType
 
+
 class ScriptMaterial:
     """草稿文件中的素材信息部分"""
 
@@ -178,7 +179,7 @@ class ScriptFile:
     """轨道信息"""
 
     imported_materials: Dict[str, List[Dict[str, Any]]]
-    """导入的素材信息"""
+    """导入的素材原始信息, 读取时推荐走带自动补空的`_get_imported_material_list`方法"""
     imported_tracks: List[ImportedTrack]
     """导入的轨道信息"""
 
@@ -217,6 +218,15 @@ class ScriptFile:
         obj = cls(**util.provide_ctor_defaults(cls))
         obj.save_path = json_path
         obj.content = load_draft_content(json_path, fallback_loader=fallback_loader)
+        # 补齐模板模式读取所需的基础字段
+        obj.content.setdefault("fps", 30.0)
+        obj.content.setdefault("config", {})
+        obj.content["config"].setdefault("maintrack_adsorb", True)
+        obj.content.setdefault("tracks", [])
+        obj.content.setdefault("materials", {})
+
+        for track in obj.content["tracks"]:
+            track.setdefault("segments", [])
 
         util.assign_attr_with_json(obj, ["fps", "duration"], obj.content)
         util.assign_attr_with_json(obj, ["maintrack_adsorb"], obj.content["config"])
@@ -226,6 +236,10 @@ class ScriptFile:
         obj.imported_tracks = [import_track(track_data) for track_data in obj.content["tracks"]]
 
         return obj
+
+    def _get_imported_material_list(self, material_type: str) -> List[Dict[str, Any]]:
+        """读取导入素材列表；缺失的素材桶按空列表处理。"""
+        return self.imported_materials.get(material_type, [])
 
     def add_material(self, material: Union[VideoMaterial, AudioMaterial]) -> "ScriptFile":
         """向草稿文件中添加一个素材"""
@@ -566,7 +580,7 @@ class ScriptFile:
 
         # 收集所有需要复制的素材ID
         material_ids = set()
-        segments: List[Dict[str, Any]] = track.raw_data.get("segments", [])
+        segments: List[Dict[str, Any]] = track.raw_data["segments"]
         for segment in segments:
             # 主素材ID
             material_id = segment.get("material_id")
@@ -611,7 +625,7 @@ class ScriptFile:
         video_mode = isinstance(material, VideoMaterial)
         # 查找素材
         target_json_obj: Optional[Dict[str, Any]] = None
-        target_material_list = self.imported_materials["videos" if video_mode else "audios"]
+        target_material_list = self._get_imported_material_list("videos" if video_mode else "audios")
         name_key = "material_name" if video_mode else "name"
         for mat in target_material_list:
             if mat[name_key] == material_name:
@@ -711,7 +725,7 @@ class ScriptFile:
         replaced: bool = False
         material_id: str = track.segments[segment_index].material_id
         # 尝试在文本素材中替换
-        for mat in self.imported_materials["texts"]:
+        for mat in self._get_imported_material_list("texts"):
             if mat["id"] != material_id:
                 continue
 
@@ -731,7 +745,7 @@ class ScriptFile:
             return self
 
         # 尝试在文本模板中替换
-        for template in self.imported_materials["text_templates"]:
+        for template in self._get_imported_material_list("text_templates"):
             if template["id"] != material_id:
                 continue
 
@@ -742,7 +756,7 @@ class ScriptFile:
                 raise ValueError(f"文字模板'{template['name']}'只有{len(resources)}段文本, 但提供了{len(text)}段替换内容")
 
             for sub_material_id, new_text in zip(map(lambda x: x["text_material_id"], resources), text):
-                for mat in self.imported_materials["texts"]:
+                for mat in self._get_imported_material_list("texts"):
                     if mat["id"] != sub_material_id:
                         continue
 
@@ -761,24 +775,25 @@ class ScriptFile:
             replaced = True
             break
 
-        assert replaced, f"未找到指定片段的素材 {material_id}"
+        if not replaced:
+            raise exceptions.MaterialNotFound("未找到指定片段的文本素材 %s" % material_id)
 
         return self
 
     def inspect_material(self) -> None:
         """输出草稿中导入的贴纸、文本气泡以及花字素材的元数据"""
         print("贴纸素材:")
-        for sticker in self.imported_materials["stickers"]:
+        for sticker in self._get_imported_material_list("stickers"):
             print("\tResource id: %s '%s'" % (sticker["resource_id"], sticker.get("name", "")))
 
         print("文字气泡效果:")
-        for effect in self.imported_materials["effects"]:
+        for effect in self._get_imported_material_list("effects"):
             if effect["type"] == "text_shape":
                 print("\tEffect id: %s ,Resource id: %s '%s'" %
                       (effect["effect_id"], effect["resource_id"], effect.get("name", "")))
 
         print("花字效果:")
-        for effect in self.imported_materials["effects"]:
+        for effect in self._get_imported_material_list("effects"):
             if effect["type"] == "text_effect":
                 print("\tResource id: %s '%s'" % (effect["resource_id"], effect.get("name", "")))
 

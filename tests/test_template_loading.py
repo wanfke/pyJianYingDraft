@@ -70,3 +70,38 @@ def test_duplicate_as_template_reuses_fallback_loader(tmp_path):
 
     assert script.save_path.endswith("copied_template\\draft_content.json")
     assert (tmp_path / "copied_template" / "draft_content.json").exists()
+
+
+def test_load_template_normalizes_sparse_template_content(tmp_path):
+    draft_content_path = _create_template_draft(tmp_path, "sparse_template")
+    draft_content_path.write_bytes(b"custom payload")
+
+    sparse_content = {
+        "duration": 123456,
+        "canvas_config": {"width": 1920, "height": 1080},
+        "tracks": [
+            {
+                "id": "track-1",
+                "type": "text",
+                "segments": [
+                    {
+                        "material_id": "text-material-1",
+                        "target_timerange": {"duration": 1000},
+                        "track_render_index": 7,
+                    }
+                ],
+            }
+        ],
+    }
+
+    folder = draft.DraftFolder(
+        str(tmp_path),
+        fallback_loader=lambda _: sparse_content,
+    )
+    script = folder.load_template("sparse_template")
+
+    assert script.fps == 30
+    assert script.maintrack_adsorb is True
+    assert script.imported_tracks[0].name == ""
+    assert script.imported_tracks[0].render_index == 7
+    assert script.imported_tracks[0].segments[0].target_timerange.start == 0
