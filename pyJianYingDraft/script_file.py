@@ -4,7 +4,7 @@ import math
 from copy import deepcopy
 
 from typing import Optional, Literal, Union, overload
-from typing import Type, Dict, List, Any
+from typing import Type, Dict, List, Tuple, Any
 
 from . import util
 from . import assets
@@ -288,11 +288,11 @@ class ScriptFile:
         if track_name in [track.name for track in self.tracks.values()]:
             raise NameError("名为 '%s' 的轨道已存在" % track_name)
 
-        render_index = track_type.value.render_index + relative_index
+        self.tracks[track_name] = Track(track_type, track_name, self._next_track_order(), mute)
         if absolute_index is not None:
-            render_index = absolute_index
-
-        self.tracks[track_name] = Track(track_type, track_name, render_index, self._next_track_order(), mute)
+            self.tracks[track_name]._export_render_index_override = absolute_index
+        elif relative_index != 0:
+            self.tracks[track_name]._export_render_index_override = track_type.value.render_index + relative_index
         return self
 
     def _get_track(self, segment_type: Type[BaseSegment], track_name: Optional[str]) -> Track:
@@ -523,7 +523,7 @@ class ScriptFile:
 
     def get_imported_track(self, track_type: Literal[TrackType.video, TrackType.audio, TrackType.text],
                            name: Optional[str] = None, index: Optional[int] = None) -> EditableTrack:
-        """获取指定类型的导入轨道, 以便在其上进行替换
+        """获取唯一匹配的导入轨道, 以便在其上进行替换
 
         推荐使用轨道名称进行筛选（若已知轨道名称）
 
@@ -532,20 +532,20 @@ class ScriptFile:
             name (`str`, optional): 轨道名称, 不指定则不根据名称筛选.
             index (`int`, optional): 轨道在**同类型的导入轨道**中的下标, 以0为最下层轨道. 不指定则不根据下标筛选.
 
+        Returns:
+            `EditableTrack`: 脚本内部导入轨道对象的引用；对返回对象的修改会直接影响当前`ScriptFile`
+
         Raises:
             `TrackNotFound`: 未找到满足条件的轨道
             `AmbiguousTrack`: 找到多个满足条件的轨道
         """
-        tracks_of_same_type: List[EditableTrack] = []
-        for track in self.imported_tracks:
-            if track.track_type == track_type:
-                assert isinstance(track, EditableTrack)
-                tracks_of_same_type.append(track)
+        tracks_of_same_type = self.list_imported_tracks(track_type)
 
         ret: List[EditableTrack] = []
         for ind, track in enumerate(tracks_of_same_type):
             if (name is not None) and (track.name != name): continue
             if (index is not None) and (ind != index): continue
+            assert isinstance(track, EditableTrack)
             ret.append(track)
 
         if len(ret) == 0:
@@ -556,6 +556,20 @@ class ScriptFile:
                 "找到多个满足条件的轨道: track_type=%s, name=%s, index=%s" % (track_type, name, index))
 
         return ret[0]
+
+    def list_imported_tracks(self, track_type: Optional[TrackType] = None) -> Tuple[ImportedTrack, ...]:
+        """列出导入轨道
+
+        Args:
+            track_type (`TrackType`, optional): 若提供，则仅返回该类型的导入轨道
+
+        Returns:
+            `Tuple[ImportedTrack, ...]`: 按当前脚本内部顺序返回导入轨道对象引用；
+                对返回对象本身的修改会直接影响当前`ScriptFile`
+        """
+        if track_type is None:
+            return tuple(self.imported_tracks)
+        return tuple(track for track in self.imported_tracks if track.track_type == track_type)
 
     def import_track(self, source_file: "ScriptFile", track: EditableTrack, *,
                      offset: Union[str, int] = 0,
@@ -574,7 +588,7 @@ class ScriptFile:
         # 直接拷贝原始轨道结构, 按需修改渲染层级
         imported_track = deepcopy(track)
         if relative_index is not None:
-            imported_track.render_index = track.track_type.value.render_index + relative_index
+            imported_track._export_render_index_override = track.track_type.value.render_index + relative_index
         if new_name is not None:
             imported_track.name = new_name
         imported_track.track_order = self._next_track_order()
@@ -823,7 +837,17 @@ class ScriptFile:
         # 对轨道排序并导出
         track_list: List[BaseTrack] = list(self.imported_tracks + list(self.tracks.values()))
         track_list.sort(key=lambda track: track.track_order)
-        self.content["tracks"] = [track.export_json() for track in track_list]
+        track_exports = [track.export_json() for track in track_list]
+        for export_index, (track, track_json) in enumerate(zip(track_list, track_exports)):
+            segment_render_index = track._export_render_index_override
+            if segment_render_index is None:
+                segment_render_index = export_index
+
+            for segment_json in track_json["segments"]:
+                segment_json["render_index"] = segment_render_index
+                segment_json["track_render_index"] = 0
+
+        self.content["tracks"] = track_exports
 
         return json.dumps(self.content, ensure_ascii=False, indent=4)
 

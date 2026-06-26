@@ -4,7 +4,7 @@ import uuid
 
 from enum import Enum
 from typing import TypeVar, Generic, Type
-from typing import Dict, List, Any, Union
+from typing import Dict, List, Any, Union, Optional
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
@@ -16,7 +16,7 @@ from .text_segment import TextSegment
 from .effect_segment import EffectSegment, FilterSegment
 
 @dataclass
-class Track_meta:
+class TrackTypeMeta:
     """与轨道类型关联的轨道元数据"""
 
     segment_type: Union[Type[VideoSegment], Type[AudioSegment],
@@ -34,14 +34,14 @@ class TrackType(Enum):
     变量名对应type属性, 值表示相应的轨道元数据
     """
 
-    video = Track_meta(VideoSegment, 0, True)
-    audio = Track_meta(AudioSegment, 0, True)
-    effect = Track_meta(EffectSegment, 10000, False)
-    filter = Track_meta(FilterSegment, 11000, False)
-    sticker = Track_meta(StickerSegment, 14000, False)
-    text = Track_meta(TextSegment, 15000, True)  # 原本是14000, 避免与sticker冲突改为15000
+    video = TrackTypeMeta(VideoSegment, 0, True)
+    audio = TrackTypeMeta(AudioSegment, 0, True)
+    effect = TrackTypeMeta(EffectSegment, 10000, False)
+    filter = TrackTypeMeta(FilterSegment, 11000, False)
+    sticker = TrackTypeMeta(StickerSegment, 14000, False)
+    text = TrackTypeMeta(TextSegment, 15000, True)  # 原本是14000, 避免与sticker冲突改为15000
 
-    adjust = Track_meta(None, 0, False)
+    adjust = TrackTypeMeta(None, 0, False)
     """仅供导入时使用, 不要尝试新建此类型的轨道"""
 
     @staticmethod
@@ -64,8 +64,8 @@ class BaseTrack(ABC):
     """轨道全局ID"""
     track_order: int
     """内部顺序, 值越大越靠后导出"""
-    render_index: int
-    """渲染顺序, 值越大越接近前景"""
+    _export_render_index_override: Optional[int]
+    """导出阶段的可选 render_index 覆盖值"""
 
     @abstractmethod
     def export_json(self) -> Dict[str, Any]: ...
@@ -80,12 +80,12 @@ class Track(BaseTrack, Generic[Seg_type]):
     segments: List[Seg_type]
     """该轨道包含的片段列表"""
 
-    def __init__(self, track_type: TrackType, name: str, render_index: int, track_order: int, mute: bool):
+    def __init__(self, track_type: TrackType, name: str, track_order: int, mute: bool):
         self.track_type = track_type
         self.name = name
         self.track_id = uuid.uuid4().hex
         self.track_order = track_order
-        self.render_index = render_index
+        self._export_render_index_override = None
 
         self.mute = mute
         self.segments = []
@@ -125,17 +125,12 @@ class Track(BaseTrack, Generic[Seg_type]):
         return self
 
     def export_json(self) -> Dict[str, Any]:
-        # 为每个片段写入render_index
-        segment_exports = [seg.export_json() for seg in self.segments]
-        for seg in segment_exports:
-            seg["render_index"] = self.render_index
-
         return {
             "attribute": int(self.mute),
             "flag": 0,
             "id": self.track_id,
             "is_default_name": len(self.name) == 0,
             "name": self.name,
-            "segments": segment_exports,
+            "segments": [seg.export_json() for seg in self.segments],
             "type": self.track_type.name
         }

@@ -8,7 +8,7 @@ from tests.helpers import fake_audio_material, fake_video_material
 
 
 def test_track_accepts_matching_segment_type():
-    track = Track(draft.TrackType.audio, "audio", 0, 0, False)
+    track = Track(draft.TrackType.audio, "audio", 0, False)
     segment = draft.AudioSegment(fake_audio_material(), draft.trange("0s", "1s"))
 
     track.add_segment(segment)
@@ -18,7 +18,7 @@ def test_track_accepts_matching_segment_type():
 
 
 def test_track_rejects_mismatched_segment_type():
-    track = Track(draft.TrackType.audio, "audio", 0, 0, False)
+    track = Track(draft.TrackType.audio, "audio", 0, False)
     segment = draft.VideoSegment(fake_video_material(), draft.trange("0s", "1s"))
 
     with pytest.raises(TypeError):
@@ -26,7 +26,7 @@ def test_track_rejects_mismatched_segment_type():
 
 
 def test_track_rejects_overlapping_segments():
-    track = Track(draft.TrackType.audio, "audio", 0, 0, False)
+    track = Track(draft.TrackType.audio, "audio", 0, False)
     first = draft.AudioSegment(fake_audio_material(material_id="audio-1"), draft.trange("0s", "2s"))
     second = draft.AudioSegment(fake_audio_material(material_id="audio-2"), draft.trange("1s", "2s"))
 
@@ -37,7 +37,7 @@ def test_track_rejects_overlapping_segments():
 
 
 def test_track_end_time_reflects_last_segment_end():
-    track = Track(draft.TrackType.audio, "audio", 0, 0, False)
+    track = Track(draft.TrackType.audio, "audio", 0, False)
     first = draft.AudioSegment(fake_audio_material(material_id="audio-1"), draft.trange("0s", "1s"))
     second = draft.AudioSegment(fake_audio_material(material_id="audio-2"), draft.trange("2s", "1s"))
 

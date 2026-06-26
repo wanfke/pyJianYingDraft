@@ -104,8 +104,12 @@ def test_load_template_normalizes_sparse_template_content(tmp_path):
     assert script.fps == 30
     assert script.maintrack_adsorb is True
     assert script.imported_tracks[0].name == ""
-    assert script.imported_tracks[0].render_index == 7
+    assert not hasattr(script.imported_tracks[0], "render_index")
     assert script.imported_tracks[0].segments[0].target_timerange.start == 0
+
+    dumped = parse_dump(script)
+    assert dumped["tracks"][0]["segments"][0]["render_index"] == 0
+    assert dumped["tracks"][0]["segments"][0]["track_render_index"] == 0
 
 
 def test_template_dump_preserves_original_track_array_order(tmp_path):
@@ -150,3 +154,74 @@ def test_template_dump_preserves_original_track_array_order(tmp_path):
     dumped = parse_dump(script)
 
     assert [track["name"] for track in dumped["tracks"]] == ["first_track", "second_track"]
+    assert [track["segments"][0]["render_index"] for track in dumped["tracks"]] == [0, 1]
+
+
+def test_list_imported_tracks_preserves_internal_order_and_supports_type_filter(tmp_path):
+    draft_content_path = _create_template_draft(tmp_path, "list_template")
+    draft_content_path.write_bytes(b"custom payload")
+
+    folder = draft.DraftFolder(
+        str(tmp_path),
+        fallback_loader=lambda _: {
+            "duration": 123456,
+            "canvas_config": {"width": 1920, "height": 1080},
+            "tracks": [
+                {"id": "track-1", "type": "text", "name": "text_a", "segments": []},
+                {"id": "track-2", "type": "audio", "name": "audio_a", "segments": []},
+                {"id": "track-3", "type": "text", "name": "text_b", "segments": []},
+            ],
+        },
+    )
+    script = folder.load_template("list_template")
+
+    all_tracks = script.list_imported_tracks()
+    text_tracks = script.list_imported_tracks(draft.TrackType.text)
+
+    assert [track.name for track in all_tracks] == ["text_a", "audio_a", "text_b"]
+    assert [track.name for track in text_tracks] == ["text_a", "text_b"]
+
+
+def test_list_imported_tracks_returns_live_references(tmp_path):
+    draft_content_path = _create_template_draft(tmp_path, "reference_template")
+    draft_content_path.write_bytes(b"custom payload")
+
+    folder = draft.DraftFolder(
+        str(tmp_path),
+        fallback_loader=lambda _: {
+            "duration": 123456,
+            "canvas_config": {"width": 1920, "height": 1080},
+            "tracks": [
+                {"id": "track-1", "type": "text", "name": "original_name", "segments": []},
+            ],
+        },
+    )
+    script = folder.load_template("reference_template")
+
+    track = script.list_imported_tracks(draft.TrackType.text)[0]
+    track.name = "renamed_track"
+
+    dumped = parse_dump(script)
+
+    assert dumped["tracks"][0]["name"] == "renamed_track"
+
+
+def test_get_imported_track_uses_internal_order_for_indexing(tmp_path):
+    draft_content_path = _create_template_draft(tmp_path, "indexed_template")
+    draft_content_path.write_bytes(b"custom payload")
+
+    folder = draft.DraftFolder(
+        str(tmp_path),
+        fallback_loader=lambda _: {
+            "duration": 123456,
+            "canvas_config": {"width": 1920, "height": 1080},
+            "tracks": [
+                {"id": "track-1", "type": "text", "name": "text_a", "segments": []},
+                {"id": "track-2", "type": "text", "name": "text_b", "segments": []},
+            ],
+        },
+    )
+    script = folder.load_template("indexed_template")
+
+    assert script.get_imported_track(draft.TrackType.text, index=0).name == "text_a"
+    assert script.get_imported_track(draft.TrackType.text, index=1).name == "text_b"

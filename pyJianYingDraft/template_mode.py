@@ -86,10 +86,7 @@ class ImportedTrack(BaseTrack):
         self.name = json_data.get("name", "")
         self.track_id = json_data["id"]
         self.track_order = track_order
-        self.render_index = max(
-            [int(seg.get("render_index", seg.get("track_render_index", 0))) for seg in json_data["segments"]],
-            default=0,
-        )
+        self._export_render_index_override = None
 
         self.raw_data = deepcopy(json_data)
 
@@ -126,11 +123,7 @@ class EditableTrack(ImportedTrack):
 
     def export_json(self) -> Dict[str, Any]:
         ret = super().export_json()
-        # 为每个片段写入render_index
-        segment_exports = [seg.export_json() for seg in self.segments]
-        for seg in segment_exports:
-            seg["render_index"] = self.render_index
-        ret["segments"] = segment_exports
+        ret["segments"] = [seg.export_json() for seg in self.segments]
         return ret
 
 class ImportedTextTrack(EditableTrack):

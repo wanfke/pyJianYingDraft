@@ -60,3 +60,17 @@ def test_dumps_orders_tracks_by_creation_order():
     dumped = parse_dump(script)
 
     assert [track["name"] for track in dumped["tracks"]] == ["foreground", "background"]
+    assert [track["segments"] for track in dumped["tracks"]] == [[], []]
+
+
+def test_absolute_index_overrides_export_render_index():
+    script = draft.ScriptFile(1920, 1080, 30, True)
+    script.add_track(draft.TrackType.video, "foreground", absolute_index=10)
+
+    segment = draft.VideoSegment(fake_video_material(), draft.trange("0s", "2s"))
+    script.add_segment(segment, track_name="foreground")
+
+    dumped = parse_dump(script)
+
+    assert dumped["tracks"][0]["segments"][0]["render_index"] == 10
+    assert dumped["tracks"][0]["segments"][0]["track_render_index"] == 0
