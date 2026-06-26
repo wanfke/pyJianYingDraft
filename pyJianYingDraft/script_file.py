@@ -233,13 +233,20 @@ class ScriptFile:
         util.assign_attr_with_json(obj, ["width", "height"], obj.content["canvas_config"])
 
         obj.imported_materials = deepcopy(obj.content["materials"])
-        obj.imported_tracks = [import_track(track_data) for track_data in obj.content["tracks"]]
+        obj.imported_tracks = [import_track(track_data, track_order) for track_order, track_data in enumerate(obj.content["tracks"])]
 
         return obj
 
     def _get_imported_material_list(self, material_type: str) -> List[Dict[str, Any]]:
         """读取导入素材列表；缺失的素材桶按空列表处理。"""
         return self.imported_materials.get(material_type, [])
+
+    def _next_track_order(self) -> int:
+        """获取新轨道默认应追加到的内部顺序。"""
+        track_list: List[BaseTrack] = list(self.imported_tracks) + list(self.tracks.values())
+        if len(track_list) == 0:
+            return 0
+        return max(track.track_order for track in track_list) + 1
 
     def add_material(self, material: Union[VideoMaterial, AudioMaterial]) -> "ScriptFile":
         """向草稿文件中添加一个素材"""
@@ -285,7 +292,7 @@ class ScriptFile:
         if absolute_index is not None:
             render_index = absolute_index
 
-        self.tracks[track_name] = Track(track_type, track_name, render_index, mute)
+        self.tracks[track_name] = Track(track_type, track_name, render_index, self._next_track_order(), mute)
         return self
 
     def _get_track(self, segment_type: Type[BaseSegment], track_name: Optional[str]) -> Track:
@@ -570,6 +577,7 @@ class ScriptFile:
             imported_track.render_index = track.track_type.value.render_index + relative_index
         if new_name is not None:
             imported_track.name = new_name
+        imported_track.track_order = self._next_track_order()
 
         # 应用偏移量
         offset_us = tim(offset)
@@ -813,8 +821,8 @@ class ScriptFile:
                 self.content["materials"][material_type].extend(material_list)
 
         # 对轨道排序并导出
-        track_list: List[BaseTrack] = list(self.imported_tracks + list(self.tracks.values()))  # 新加入的轨道在列表末尾（上层）
-        track_list.sort(key=lambda track: track.render_index)
+        track_list: List[BaseTrack] = list(self.imported_tracks + list(self.tracks.values()))
+        track_list.sort(key=lambda track: track.track_order)
         self.content["tracks"] = [track.export_json() for track in track_list]
 
         return json.dumps(self.content, ensure_ascii=False, indent=4)

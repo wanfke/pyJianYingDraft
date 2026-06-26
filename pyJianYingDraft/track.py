@@ -62,6 +62,8 @@ class BaseTrack(ABC):
     """轨道名称"""
     track_id: str
     """轨道全局ID"""
+    track_order: int
+    """内部顺序, 值越大越靠后导出"""
     render_index: int
     """渲染顺序, 值越大越接近前景"""
 
@@ -78,10 +80,11 @@ class Track(BaseTrack, Generic[Seg_type]):
     segments: List[Seg_type]
     """该轨道包含的片段列表"""
 
-    def __init__(self, track_type: TrackType, name: str, render_index: int, mute: bool):
+    def __init__(self, track_type: TrackType, name: str, render_index: int, track_order: int, mute: bool):
         self.track_type = track_type
         self.name = name
         self.track_id = uuid.uuid4().hex
+        self.track_order = track_order
         self.render_index = render_index
 
         self.mute = mute

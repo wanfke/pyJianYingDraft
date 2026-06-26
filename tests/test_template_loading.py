@@ -5,6 +5,7 @@ import pyJianYingDraft as draft
 import pytest
 
 from pyJianYingDraft.exceptions import DraftContentLoadFailed
+from tests.helpers import parse_dump
 
 
 def _create_template_draft(tmp_path: Path, draft_name: str) -> Path:
@@ -105,3 +106,47 @@ def test_load_template_normalizes_sparse_template_content(tmp_path):
     assert script.imported_tracks[0].name == ""
     assert script.imported_tracks[0].render_index == 7
     assert script.imported_tracks[0].segments[0].target_timerange.start == 0
+
+
+def test_template_dump_preserves_original_track_array_order(tmp_path):
+    draft_content_path = _create_template_draft(tmp_path, "ordered_template")
+    draft_content_path.write_bytes(b"custom payload")
+
+    folder = draft.DraftFolder(
+        str(tmp_path),
+        fallback_loader=lambda _: {
+            "duration": 123456,
+            "canvas_config": {"width": 1920, "height": 1080},
+            "tracks": [
+                {
+                    "id": "track-1",
+                    "type": "text",
+                    "name": "first_track",
+                    "segments": [
+                        {
+                            "material_id": "text-material-1",
+                            "target_timerange": {"start": 0, "duration": 1000},
+                            "render_index": 10,
+                        }
+                    ],
+                },
+                {
+                    "id": "track-2",
+                    "type": "text",
+                    "name": "second_track",
+                    "segments": [
+                        {
+                            "material_id": "text-material-2",
+                            "target_timerange": {"start": 0, "duration": 1000},
+                            "render_index": 1,
+                        }
+                    ],
+                },
+            ],
+        },
+    )
+    script = folder.load_template("ordered_template")
+
+    dumped = parse_dump(script)
+
+    assert [track["name"] for track in dumped["tracks"]] == ["first_track", "second_track"]

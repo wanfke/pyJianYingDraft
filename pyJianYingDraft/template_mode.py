@@ -81,10 +81,11 @@ class ImportedTrack(BaseTrack):
     raw_data: Dict[str, Any]
     """原始轨道数据"""
 
-    def __init__(self, json_data: Dict[str, Any]):
+    def __init__(self, json_data: Dict[str, Any], track_order: int):
         self.track_type = TrackType.from_name(json_data["type"])
         self.name = json_data.get("name", "")
         self.track_id = json_data["id"]
+        self.track_order = track_order
         self.render_index = max(
             [int(seg.get("render_index", seg.get("track_render_index", 0))) for seg in json_data["segments"]],
             default=0,
@@ -135,8 +136,8 @@ class EditableTrack(ImportedTrack):
 class ImportedTextTrack(EditableTrack):
     """模板模式下导入的文本轨道"""
 
-    def __init__(self, json_data: Dict[str, Any]):
-        super().__init__(json_data)
+    def __init__(self, json_data: Dict[str, Any], track_order: int):
+        super().__init__(json_data, track_order)
         self.segments = [ImportedSegment(seg) for seg in json_data["segments"]]
 
 class ImportedMediaTrack(EditableTrack):
@@ -145,8 +146,8 @@ class ImportedMediaTrack(EditableTrack):
     segments: List[ImportedMediaSegment]
     """该轨道包含的片段列表"""
 
-    def __init__(self, json_data: Dict[str, Any]):
-        super().__init__(json_data)
+    def __init__(self, json_data: Dict[str, Any], track_order: int):
+        super().__init__(json_data, track_order)
         self.segments = [ImportedMediaSegment(seg) for seg in json_data["segments"]]
 
     def check_material_type(self, material: object) -> bool:
@@ -214,11 +215,11 @@ class ImportedMediaTrack(EditableTrack):
         # 写入素材时间范围
         seg.source_timerange = src_timerange
 
-def import_track(json_data: Dict[str, Any]) -> ImportedTrack:
+def import_track(json_data: Dict[str, Any], track_order: int) -> ImportedTrack:
     """导入轨道"""
     track_type = TrackType.from_name(json_data["type"])
     if not track_type.value.allow_modify:
-        return ImportedTrack(json_data)
+        return ImportedTrack(json_data, track_order)
     if track_type == TrackType.text:
-        return ImportedTextTrack(json_data)
-    return ImportedMediaTrack(json_data)
+        return ImportedTextTrack(json_data, track_order)
+    return ImportedMediaTrack(json_data, track_order)

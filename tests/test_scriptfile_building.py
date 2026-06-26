@@ -52,11 +52,11 @@ def test_add_segment_auto_registers_materials_and_effect_refs():
     assert dumped["materials"]["material_animations"][0]["id"] in segment_json["extra_material_refs"]
 
 
-def test_dumps_orders_tracks_by_render_index():
+def test_dumps_orders_tracks_by_creation_order():
     script = draft.ScriptFile(1920, 1080, 30, True)
     script.add_track(draft.TrackType.video, "foreground", absolute_index=10)
     script.add_track(draft.TrackType.video, "background", absolute_index=1)
 
     dumped = parse_dump(script)
 
-    assert [track["name"] for track in dumped["tracks"]] == ["background", "foreground"]
+    assert [track["name"] for track in dumped["tracks"]] == ["foreground", "background"]
