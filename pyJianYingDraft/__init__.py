@@ -18,7 +18,7 @@ from .metadata import TextIntro, TextOutro, TextLoopAnim
 from .metadata import AudioSceneEffectType
 from .metadata import VideoSceneEffectType, VideoCharacterEffectType
 
-from .track import TrackType
+from .track import TrackType, TrackRef, TrackSpec
 from .template_mode import ShrinkMode, ExtendMode
 from .script_file import ScriptFile
 from .draft_folder import DraftFolder
@@ -222,6 +222,8 @@ __all__ = [
     "TextBackground",
     "TextShadow",
     "TrackType",
+    "TrackRef",
+    "TrackSpec",
     "ShrinkMode",
     "ExtendMode",
     "ScriptFile",

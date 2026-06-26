@@ -1,10 +1,11 @@
 import os
 import json
 import math
+import uuid
 from copy import deepcopy
 
 from typing import Optional, Literal, Union, overload
-from typing import Type, Dict, List, Tuple, Any
+from typing import Type, Dict, List, Tuple, Any, Sequence
 
 from . import util
 from . import assets
@@ -18,7 +19,7 @@ from .audio_segment import AudioSegment, AudioFade, AudioEffect
 from .video_segment import VideoSegment, StickerSegment, SegmentAnimations, VideoEffect, Transition, Filter, BackgroundFilling, MixMode
 from .effect_segment import EffectSegment, FilterSegment
 from .text_segment import TextSegment, TextStyle, TextBubble
-from .track import TrackType, BaseTrack, Track
+from .track import TrackType, TrackRef, TrackSpec, BaseTrack, Track
 
 from .metadata import VideoSceneEffectType, VideoCharacterEffectType, FilterType
 
@@ -182,6 +183,8 @@ class ScriptFile:
     """导入的素材原始信息, 读取时推荐走带自动补空的`_get_imported_material_list`方法"""
     imported_tracks: List[ImportedTrack]
     """导入的轨道信息"""
+    _track_ref_owner_id: str
+    """用于校验 TrackRef 归属的内部标识"""
 
     def __init__(self, width: int, height: int, fps: int, maintrack_adsorb: bool):
         """**创建剪映草稿推荐使用`DraftFolder.create_draft()`而非此方法**
@@ -205,6 +208,7 @@ class ScriptFile:
 
         self.imported_materials = {}
         self.imported_tracks = []
+        self._track_ref_owner_id = uuid.uuid4().hex
 
         with open(assets.get_asset_path('DRAFT_CONTENT_TEMPLATE'), "r", encoding="utf-8") as f:
             self.content = json.load(f)
@@ -248,6 +252,30 @@ class ScriptFile:
             return 0
         return max(track.track_order for track in track_list) + 1
 
+    def _append_internal_track(self, track_type: TrackType, track_name: Optional[str], mute: bool) -> Track:
+        if track_name is None:
+            if track_type in [track.track_type for track in self.tracks.values()]:
+                raise NameError("'%s' 类型的轨道已存在, 请为新轨道指定名称以避免混淆" % track_type)
+            track_name = track_type.name
+        if track_name in [track.name for track in self.tracks.values()]:
+            raise NameError("名为 '%s' 的轨道已存在" % track_name)
+
+        track = Track(track_type, track_name, self._next_track_order(), mute)
+        self.tracks[track_name] = track
+        return track
+
+    def _track_to_ref(self, track: Track) -> TrackRef:
+        return TrackRef(track.track_id, track.track_type, track.name, self._track_ref_owner_id)
+
+    def _resolve_track_ref(self, track_ref: TrackRef) -> Track:
+        if track_ref._owner_id != self._track_ref_owner_id:
+            raise ValueError("轨道引用 '%s' 不属于当前 ScriptFile" % track_ref.track_id)
+
+        for track in self.tracks.values():
+            if track.track_id == track_ref.track_id:
+                return track
+        raise NameError("不存在 id 为 '%s' 的轨道引用" % track_ref.track_id)
+
     def add_material(self, material: Union[VideoMaterial, AudioMaterial]) -> "ScriptFile":
         """向草稿文件中添加一个素材"""
         if material in self.materials:  # 素材已存在
@@ -281,26 +309,50 @@ class ScriptFile:
             `NameError`: 已存在同类型轨道且未指定名称, 或已存在同名轨道
         """
 
-        if track_name is None:
-            if track_type in [track.track_type for track in self.tracks.values()]:
-                raise NameError("'%s' 类型的轨道已存在, 请为新轨道指定名称以避免混淆" % track_type)
-            track_name = track_type.name
-        if track_name in [track.name for track in self.tracks.values()]:
-            raise NameError("名为 '%s' 的轨道已存在" % track_name)
-
-        self.tracks[track_name] = Track(track_type, track_name, self._next_track_order(), mute)
+        track = self._append_internal_track(track_type, track_name, mute)
         if absolute_index is not None:
-            self.tracks[track_name]._export_render_index_override = absolute_index
+            track._export_render_index_override = absolute_index
         elif relative_index != 0:
-            self.tracks[track_name]._export_render_index_override = track_type.value.render_index + relative_index
+            track._export_render_index_override = track_type.value.render_index + relative_index
         return self
 
-    def _get_track(self, segment_type: Type[BaseSegment], track_name: Optional[str]) -> Track:
+    def append_track(self, track_spec: TrackSpec) -> TrackRef:
+        """追加一个新轨道到当前末尾
+
+        Args:
+            track_spec (`TrackSpec`): 待追加轨道的描述对象
+
+        Returns:
+            `TrackRef`: 新挂载轨道的公开引用
+
+        Raises:
+            `NameError`: 已存在同类型轨道且未指定名称, 或已存在同名轨道
+        """
+        return self._track_to_ref(self._append_internal_track(track_spec.track_type, track_spec.name, track_spec.mute))
+
+    def append_tracks(self, track_specs: Sequence[TrackSpec]) -> Tuple[TrackRef, ...]:
+        """按给定顺序将多个新轨道追加到当前末尾
+
+        Args:
+            track_specs (`Sequence[TrackSpec]`): 待追加轨道描述列表
+
+        Returns:
+            `Tuple[TrackRef, ...]`: 新挂载轨道的公开引用元组，顺序与输入保持一致
+
+        Raises:
+            `NameError`: 某个轨道描述与现有轨道命名规则冲突
+        """
+        return tuple(self.append_track(track_spec) for track_spec in track_specs)
+
+    def _get_track(self, segment_type: Type[BaseSegment], track: Optional[Union[str, TrackRef]]) -> Track:
+        # 指定轨道引用
+        if isinstance(track, TrackRef):
+            return self._resolve_track_ref(track)
         # 指定轨道名称
-        if track_name is not None:
-            if track_name not in self.tracks:
-                raise NameError("不存在名为 '%s' 的轨道" % track_name)
-            return self.tracks[track_name]
+        if track is not None:
+            if track not in self.tracks:
+                raise NameError("不存在名为 '%s' 的轨道" % track)
+            return self.tracks[track]
         # 寻找唯一的同类型的轨道
         count = sum([1 for track in self.tracks.values() if track.accept_segment_type == segment_type])
         if count == 0: raise NameError("不存在接受 '%s' 的轨道" % segment_type)
@@ -309,19 +361,21 @@ class ScriptFile:
         return next(track for track in self.tracks.values() if track.accept_segment_type == segment_type)
 
     def add_segment(self, segment: Union[VideoSegment, StickerSegment, AudioSegment, TextSegment],
-                    track_name: Optional[str] = None) -> "ScriptFile":
+                    track: Optional[Union[str, TrackRef]] = None) -> "ScriptFile":
         """向指定轨道中添加一个片段
 
         Args:
             segment (`VideoSegment`, `StickerSegment`, `AudioSegment`, or `TextSegment`): 要添加的片段
-            track_name (`str`, optional): 添加到的轨道名称. 当此类型的轨道仅有一条时可省略.
+            track (`str` or `TrackRef`, optional): 添加到的轨道名称或轨道引用.
+                当此类型的轨道仅有一条时可省略.
 
         Raises:
-            `NameError`: 未找到指定名称的轨道, 或必须提供`track_name`参数时未提供
+            `NameError`: 未找到指定名称的轨道, 或必须提供`track`参数时未提供
+            `ValueError`: 提供的 `TrackRef` 不属于当前 `ScriptFile`
             `TypeError`: 片段类型不匹配轨道类型
             `SegmentOverlap`: 新片段与已有片段重叠
         """
-        target = self._get_track(type(segment), track_name)
+        target = self._get_track(type(segment), track)
 
         # 加入轨道并更新时长
         target.add_segment(segment)

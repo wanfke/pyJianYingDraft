@@ -68,7 +68,7 @@ def test_absolute_index_overrides_export_render_index():
     script.add_track(draft.TrackType.video, "foreground", absolute_index=10)
 
     segment = draft.VideoSegment(fake_video_material(), draft.trange("0s", "2s"))
-    script.add_segment(segment, track_name="foreground")
+    script.add_segment(segment, track="foreground")
 
     dumped = parse_dump(script)
 

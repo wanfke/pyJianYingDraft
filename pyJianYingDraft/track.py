@@ -2,18 +2,18 @@
 
 import uuid
 
-from enum import Enum
-from typing import TypeVar, Generic, Type
-from typing import Dict, List, Any, Union, Optional
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
 
 from .exceptions import SegmentOverlap
 from .segment import BaseSegment
-from .video_segment import VideoSegment, StickerSegment
 from .audio_segment import AudioSegment
-from .text_segment import TextSegment
 from .effect_segment import EffectSegment, FilterSegment
+from .text_segment import TextSegment
+from .video_segment import StickerSegment, VideoSegment
+
 
 @dataclass
 class TrackTypeMeta:
@@ -27,6 +27,7 @@ class TrackTypeMeta:
     """默认渲染顺序, 值越大越接近前景"""
     allow_modify: bool
     """当被导入时, 是否允许修改"""
+
 
 class TrackType(Enum):
     """轨道类型枚举
@@ -53,6 +54,63 @@ class TrackType(Enum):
         raise ValueError("Invalid track type: %s" % name)
 
 
+class TrackRef:
+    """已挂载轨道的公开引用对象"""
+
+    track_id: str
+    """轨道全局 ID"""
+    track_type: TrackType
+    """轨道类型"""
+    name: str
+    """轨道名称"""
+    _owner_id: Optional[str]
+    """所属 ScriptFile 的内部标识"""
+
+    def __init__(self, track_id: str, track_type: TrackType, name: str, owner_id: Optional[str] = None):
+        """**获取轨道引用推荐使用 `ScriptFile.append_track(...)`、
+        `ScriptFile.append_tracks(...)` 等方法返回的结果，而非通过本方法手动构造**
+
+        Args:
+            track_id (`str`): 轨道全局 ID
+            track_type (`TrackType`): 轨道类型
+            name (`str`): 轨道名称
+            owner_id (`str`, optional): 所属 `ScriptFile` 的内部标识
+
+        Raises:
+            无
+        """
+        self.track_id = track_id
+        self.track_type = track_type
+        self.name = name
+        self._owner_id = owner_id
+
+
+class TrackSpec:
+    """待挂载轨道的描述对象"""
+
+    track_type: TrackType
+    """轨道类型"""
+    name: Optional[str]
+    """轨道名称；为 `None` 时沿用现有默认命名规则"""
+    mute: bool
+    """是否静音"""
+
+    def __init__(self, track_type: TrackType, name: Optional[str] = None, mute: bool = False):
+        """构造待挂载轨道描述
+
+        Args:
+            track_type (`TrackType`): 轨道类型
+            name (`str`, optional): 轨道名称；为 `None` 时沿用 `ScriptFile` 现有默认命名规则
+            mute (`bool`, optional): 轨道是否静音，默认不静音
+
+        Raises:
+            无
+        """
+        self.track_type = track_type
+        self.name = name
+        self.mute = mute
+
+
 class BaseTrack(ABC):
     """轨道基类"""
 
@@ -70,7 +128,10 @@ class BaseTrack(ABC):
     @abstractmethod
     def export_json(self) -> Dict[str, Any]: ...
 
+
 Seg_type = TypeVar("Seg_type", bound=BaseSegment)
+
+
 class Track(BaseTrack, Generic[Seg_type]):
     """非模板模式下的轨道"""
 
