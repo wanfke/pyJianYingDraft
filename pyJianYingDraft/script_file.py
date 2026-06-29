@@ -252,7 +252,25 @@ class ScriptFile:
             return 0
         return max(track.track_order for track in track_list) + 1
 
-    def _append_internal_track(self, track_type: TrackType, track_name: Optional[str], mute: bool) -> Track:
+    def _list_all_tracks_in_order(self) -> List[BaseTrack]:
+        """返回按当前内部顺序排列的全部轨道。"""
+        track_list: List[BaseTrack] = list(self.imported_tracks) + list(self.tracks.values())
+        track_list.sort(key=lambda track: track.track_order)
+        return track_list
+
+    def _sync_internal_track_dict_order(self) -> None:
+        """按内部顺序重建新建轨道字典的迭代顺序。"""
+        ordered_tracks = sorted(self.tracks.values(), key=lambda track: track.track_order)
+        self.tracks = {track.name: track for track in ordered_tracks}
+
+    def _reindex_track_orders(self, track_list: Sequence[BaseTrack]) -> None:
+        """将给定轨道序列重排为连续的内部顺序。"""
+        for track_order, track in enumerate(track_list):
+            track.track_order = track_order
+        self._sync_internal_track_dict_order()
+
+    def _create_internal_track(self, track_type: TrackType, track_name: Optional[str], mute: bool,
+                               track_order: int) -> Track:
         if track_name is None:
             if track_type in [track.track_type for track in self.tracks.values()]:
                 raise NameError("'%s' 类型的轨道已存在, 请为新轨道指定名称以避免混淆" % track_type)
@@ -260,7 +278,7 @@ class ScriptFile:
         if track_name in [track.name for track in self.tracks.values()]:
             raise NameError("名为 '%s' 的轨道已存在" % track_name)
 
-        track = Track(track_type, track_name, self._next_track_order(), mute)
+        track = Track(track_type, track_name, track_order, mute)
         self.tracks[track_name] = track
         return track
 
@@ -275,6 +293,44 @@ class ScriptFile:
             if track.track_id == track_ref.track_id:
                 return track
         raise NameError("不存在 id 为 '%s' 的轨道引用" % track_ref.track_id)
+
+    def _resolve_track_anchor(self, track: Union[TrackRef, ImportedTrack]) -> BaseTrack:
+        if isinstance(track, TrackRef):
+            return self._resolve_track_ref(track)
+        if track not in self.imported_tracks:
+            raise ValueError("导入轨道引用 '%s' 不属于当前 ScriptFile" % track.track_id)
+        return track
+
+    def _resolve_insert_index(self, before_track: Optional[Union[TrackRef, ImportedTrack]],
+                              after_track: Optional[Union[TrackRef, ImportedTrack]],
+                              at_index: Optional[int]) -> int:
+        specified = sum(option is not None for option in [before_track, after_track, at_index])
+        if specified != 1:
+            raise ValueError("必须且只能指定 `before_track`、`after_track` 或 `at_index` 之一")
+
+        track_list = self._list_all_tracks_in_order()
+        if at_index is not None:
+            if not 0 <= at_index <= len(track_list):
+                raise IndexError("轨道插入位置 %d 超出 [0, %d] 的范围" % (at_index, len(track_list)))
+            return at_index
+
+        if before_track is not None:
+            return track_list.index(self._resolve_track_anchor(before_track))
+        assert after_track is not None
+        return track_list.index(self._resolve_track_anchor(after_track)) + 1
+
+    def _insert_internal_track(self, track_spec: TrackSpec, insert_at: int) -> Track:
+        track = self._create_internal_track(
+            track_spec.track_type,
+            track_spec.name,
+            track_spec.mute,
+            track_order=insert_at,
+        )
+        track_list = self._list_all_tracks_in_order()
+        track_list.remove(track)
+        track_list.insert(insert_at, track)
+        self._reindex_track_orders(track_list)
+        return track
 
     def add_material(self, material: Union[VideoMaterial, AudioMaterial]) -> "ScriptFile":
         """向草稿文件中添加一个素材"""
@@ -309,7 +365,7 @@ class ScriptFile:
             `NameError`: 已存在同类型轨道且未指定名称, 或已存在同名轨道
         """
 
-        track = self._append_internal_track(track_type, track_name, mute)
+        track = self._create_internal_track(track_type, track_name, mute, track_order=self._next_track_order())
         if absolute_index is not None:
             track._export_render_index_override = absolute_index
         elif relative_index != 0:
@@ -328,7 +384,13 @@ class ScriptFile:
         Raises:
             `NameError`: 已存在同类型轨道且未指定名称, 或已存在同名轨道
         """
-        return self._track_to_ref(self._append_internal_track(track_spec.track_type, track_spec.name, track_spec.mute))
+        track = self._create_internal_track(
+            track_spec.track_type,
+            track_spec.name,
+            track_spec.mute,
+            track_order=self._next_track_order(),
+        )
+        return self._track_to_ref(track)
 
     def append_tracks(self, track_specs: Sequence[TrackSpec]) -> Tuple[TrackRef, ...]:
         """按给定顺序将多个新轨道追加到当前末尾
@@ -343,6 +405,56 @@ class ScriptFile:
             `NameError`: 某个轨道描述与现有轨道命名规则冲突
         """
         return tuple(self.append_track(track_spec) for track_spec in track_specs)
+
+    def insert_track(self, track_spec: TrackSpec, *,
+                     before_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                     after_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                     at_index: Optional[int] = None) -> TrackRef:
+        """将一个新轨道插入到指定位置
+
+        Args:
+            track_spec (`TrackSpec`): 待插入轨道的描述对象
+            before_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道之前
+            after_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道之后
+            at_index (`int`, optional): 插入到当前完整轨道顺序中的指定下标，可取 `[0, 当前轨道数]`
+
+        Returns:
+            `TrackRef`: 新挂载轨道的公开引用
+
+        Raises:
+            `ValueError`: 没有恰好指定一个定位参数，或轨道引用不属于当前 `ScriptFile`
+            `IndexError`: `at_index` 超出允许范围
+            `NameError`: 已存在同类型轨道且未指定名称, 或已存在同名轨道
+        """
+        insert_at = self._resolve_insert_index(before_track, after_track, at_index)
+        track = self._insert_internal_track(track_spec, insert_at)
+        return self._track_to_ref(track)
+
+    def insert_tracks(self, track_specs: Sequence[TrackSpec], *,
+                      before_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                      after_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                      at_index: Optional[int] = None) -> Tuple[TrackRef, ...]:
+        """将多个新轨道作为一个顺序块插入到指定位置
+
+        Args:
+            track_specs (`Sequence[TrackSpec]`): 待插入轨道描述列表
+            before_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道之前
+            after_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道之后
+            at_index (`int`, optional): 插入到当前完整轨道顺序中的指定下标，可取 `[0, 当前轨道数]`
+
+        Returns:
+            `Tuple[TrackRef, ...]`: 新挂载轨道的公开引用元组，顺序与输入保持一致
+
+        Raises:
+            `ValueError`: 没有恰好指定一个定位参数，或轨道引用不属于当前 `ScriptFile`
+            `IndexError`: `at_index` 超出允许范围
+            `NameError`: 某个轨道描述与现有轨道命名规则冲突
+        """
+        insert_at = self._resolve_insert_index(before_track, after_track, at_index)
+        refs: List[TrackRef] = []
+        for offset, track_spec in enumerate(track_specs):
+            refs.append(self._track_to_ref(self._insert_internal_track(track_spec, insert_at + offset)))
+        return tuple(refs)
 
     def _get_track(self, segment_type: Type[BaseSegment], track: Optional[Union[str, TrackRef]]) -> Track:
         # 指定轨道引用
