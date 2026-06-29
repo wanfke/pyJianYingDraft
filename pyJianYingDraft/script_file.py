@@ -346,7 +346,7 @@ class ScriptFile:
         return self
 
     def append_track(self, track_spec: TrackSpec) -> TrackRef:
-        """追加一个新轨道到当前末尾
+        """追加一个新轨道到当前最上层
 
         Args:
             track_spec (`TrackSpec`): 待追加轨道的描述对象
@@ -366,7 +366,7 @@ class ScriptFile:
         return self._track_to_ref(track)
 
     def append_tracks(self, track_specs: Sequence[TrackSpec]) -> Tuple[TrackRef, ...]:
-        """按给定顺序将多个新轨道追加到当前末尾
+        """按给定顺序将多个新轨道追加到当前最上层
 
         Args:
             track_specs (`Sequence[TrackSpec]`): 待追加轨道描述列表
@@ -735,7 +735,7 @@ class ScriptFile:
             track (`EditableTrack`): 要导入的轨道, 可通过`get_imported_track`方法获取.
             offset (`str | int`, optional): 轨道的时间偏移量(微秒), 可以是整数微秒值或时间字符串(如"1s"). 默认不添加偏移.
             new_name (`str`, optional): 新轨道名称, 默认使用源轨道名称.
-            under_track (`TrackRef` or `ImportedTrack`, optional): 导入到指定轨道的背景侧；若不提供任何定位参数，则默认追加到当前末尾
+            under_track (`TrackRef` or `ImportedTrack`, optional): 导入到指定轨道的背景侧；若不提供任何定位参数，则默认追加到当前最上层
             over_track (`TrackRef` or `ImportedTrack`, optional): 导入到指定轨道的前景侧
             at_index (`int`, optional): 导入到当前完整轨道顺序中的指定下标；`0` 表示最底层，`len(当前轨道数)` 表示最上层
 

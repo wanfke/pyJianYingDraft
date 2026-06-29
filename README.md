@@ -386,8 +386,8 @@ script.dump("*你的草稿工程文件夹*/draft_content.json")
 #### 多轨道操作
 `ScriptFile` 当前提供两组明确的建轨接口：
 
-* `append_track(...)` / `append_tracks(...)`：永远追加到当前末尾
-* `insert_track(...)` / `insert_tracks(...)`：显式插入到指定轨道上方、下方或指定下标
+* `append_track(...)` / `append_tracks(...)`：放到当前最上层
+* `insert_track(...)` / `insert_tracks(...)`：放到某条轨道上方/下方，或指定层级下标
 
 例如：
 ```python
