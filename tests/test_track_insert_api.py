@@ -38,7 +38,7 @@ def test_insert_track_before_imported_track_preserves_overall_order(tmp_path):
     anchor = script.list_imported_tracks()[1]
     inserted_ref = script.insert_track(
         draft.TrackSpec(draft.TrackType.video, "inserted_video"),
-        before_track=anchor,
+        under_track=anchor,
     )
 
     assert inserted_ref.name == "inserted_video"
@@ -46,7 +46,7 @@ def test_insert_track_before_imported_track_preserves_overall_order(tmp_path):
     assert [track["name"] for track in dumped["tracks"]] == ["text_a", "inserted_video", "text_b"]
 
 
-def test_insert_tracks_after_track_ref_preserves_block_order():
+def test_insert_tracks_over_track_ref_preserves_block_order():
     script = draft.ScriptFile(1920, 1080, 30, True)
     first_ref = script.append_track(draft.TrackSpec(draft.TrackType.video, "first"))
     second_ref = script.append_track(draft.TrackSpec(draft.TrackType.video, "second"))
@@ -56,7 +56,7 @@ def test_insert_tracks_after_track_ref_preserves_block_order():
             draft.TrackSpec(draft.TrackType.audio, "middle_a"),
             draft.TrackSpec(draft.TrackType.text, "middle_b"),
         ],
-        after_track=first_ref,
+        over_track=first_ref,
     )
 
     assert [ref.name for ref in refs] == ["middle_a", "middle_b"]
@@ -93,7 +93,7 @@ def test_insert_track_rejects_multiple_location_hints():
     with pytest.raises(ValueError):
         script.insert_track(
             draft.TrackSpec(draft.TrackType.audio, "new_track"),
-            before_track=anchor,
+            under_track=anchor,
             at_index=0,
         )
 
@@ -115,7 +115,7 @@ def test_insert_track_rejects_foreign_imported_track_anchor(tmp_path):
     with pytest.raises(ValueError):
         script_b.insert_track(
             draft.TrackSpec(draft.TrackType.video, "new_track"),
-            before_track=foreign_anchor,
+            under_track=foreign_anchor,
         )
 
 

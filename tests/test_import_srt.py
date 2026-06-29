@@ -1,6 +1,6 @@
 import pyJianYingDraft as draft
 
-from tests.helpers import write_srt
+from tests.helpers import parse_dump, write_srt
 
 
 def test_import_srt_creates_text_track_when_missing(tmp_path):
@@ -52,3 +52,22 @@ def test_import_srt_uses_style_reference_when_provided(tmp_path):
     assert segment.style.align == 1
     assert segment.style.color == (1.0, 0.5, 0.0)
     assert segment.clip_settings.transform_y == -0.6
+
+
+def test_import_srt_inserts_new_text_track_after_video_and_text_tracks(tmp_path):
+    srt_path = write_srt(
+        tmp_path,
+        "1\n00:00:00,000 --> 00:00:01,000\n字幕\n",
+    )
+    script = draft.ScriptFile(1920, 1080, 30, True)
+    video_ref = script.append_track(draft.TrackSpec(draft.TrackType.video, "video"))
+    script.append_track(draft.TrackSpec(draft.TrackType.effect, "effect"))
+    script.insert_track(
+        draft.TrackSpec(draft.TrackType.text, "title"),
+        over_track=video_ref,
+    )
+
+    script.import_srt(str(srt_path), "captions")
+
+    dumped = parse_dump(script)
+    assert [track["name"] for track in dumped["tracks"]] == ["video", "title", "captions", "effect"]

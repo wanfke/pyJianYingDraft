@@ -194,6 +194,9 @@ class ScriptFile:
             height (int): 视频高度, 单位为像素
             fps (int): 视频帧率
             maintrack_adsorb (bool): 是否启用主轨道吸附（主轨磁吸）
+
+        Raises:
+            无
         """
         self.save_path = None
 
@@ -258,16 +261,13 @@ class ScriptFile:
         track_list.sort(key=lambda track: track.track_order)
         return track_list
 
-    def _sync_internal_track_dict_order(self) -> None:
-        """按内部顺序重建新建轨道字典的迭代顺序。"""
-        ordered_tracks = sorted(self.tracks.values(), key=lambda track: track.track_order)
-        self.tracks = {track.name: track for track in ordered_tracks}
-
     def _reindex_track_orders(self, track_list: Sequence[BaseTrack]) -> None:
         """将给定轨道序列重排为连续的内部顺序。"""
         for track_order, track in enumerate(track_list):
             track.track_order = track_order
-        self._sync_internal_track_dict_order()
+        self.imported_tracks.sort(key=lambda track: track.track_order)
+        ordered_tracks = sorted(self.tracks.values(), key=lambda track: track.track_order)
+        self.tracks = {track.name: track for track in ordered_tracks}
 
     def _create_internal_track(self, track_type: TrackType, track_name: Optional[str], mute: bool,
                                track_order: int) -> Track:
@@ -294,19 +294,12 @@ class ScriptFile:
                 return track
         raise NameError("不存在 id 为 '%s' 的轨道引用" % track_ref.track_id)
 
-    def _resolve_track_anchor(self, track: Union[TrackRef, ImportedTrack]) -> BaseTrack:
-        if isinstance(track, TrackRef):
-            return self._resolve_track_ref(track)
-        if track not in self.imported_tracks:
-            raise ValueError("导入轨道引用 '%s' 不属于当前 ScriptFile" % track.track_id)
-        return track
-
-    def _resolve_insert_index(self, before_track: Optional[Union[TrackRef, ImportedTrack]],
-                              after_track: Optional[Union[TrackRef, ImportedTrack]],
+    def _resolve_insert_index(self, under_track: Optional[Union[TrackRef, ImportedTrack]],
+                              over_track: Optional[Union[TrackRef, ImportedTrack]],
                               at_index: Optional[int]) -> int:
-        specified = sum(option is not None for option in [before_track, after_track, at_index])
+        specified = sum(option is not None for option in [under_track, over_track, at_index])
         if specified != 1:
-            raise ValueError("必须且只能指定 `before_track`、`after_track` 或 `at_index` 之一")
+            raise ValueError("必须且只能指定 `under_track`、`over_track` 或 `at_index` 之一")
 
         track_list = self._list_all_tracks_in_order()
         if at_index is not None:
@@ -314,10 +307,18 @@ class ScriptFile:
                 raise IndexError("轨道插入位置 %d 超出 [0, %d] 的范围" % (at_index, len(track_list)))
             return at_index
 
-        if before_track is not None:
-            return track_list.index(self._resolve_track_anchor(before_track))
-        assert after_track is not None
-        return track_list.index(self._resolve_track_anchor(after_track)) + 1
+        if under_track is not None:
+            if isinstance(under_track, TrackRef):
+                return track_list.index(self._resolve_track_ref(under_track))
+            if under_track not in self.imported_tracks:
+                raise ValueError("导入轨道引用 '%s' 不属于当前 ScriptFile" % under_track.track_id)
+            return track_list.index(under_track)
+        assert over_track is not None
+        if isinstance(over_track, TrackRef):
+            return track_list.index(self._resolve_track_ref(over_track)) + 1
+        if over_track not in self.imported_tracks:
+            raise ValueError("导入轨道引用 '%s' 不属于当前 ScriptFile" % over_track.track_id)
+        return track_list.index(over_track) + 1
 
     def _insert_internal_track(self, track_spec: TrackSpec, insert_at: int) -> Track:
         track = self._create_internal_track(
@@ -342,34 +343,6 @@ class ScriptFile:
             self.materials.audios.append(material)
         else:
             raise TypeError("错误的素材类型: '%s'" % type(material))
-        return self
-
-    def add_track(self, track_type: TrackType, track_name: Optional[str] = None, *,
-                  mute: bool = False,
-                  relative_index: int = 0, absolute_index: Optional[int] = None) -> "ScriptFile":
-        """向草稿文件中添加一个指定类型、指定名称的轨道, 可以自定义轨道层级
-
-        注意: 主视频轨道(最底层的视频轨道)上的视频片段必须从0s开始, 否则会被剪映强制对齐至0s.
-
-        为避免混淆, 仅在创建第一个同类型轨道时允许不指定名称
-
-        Args:
-            track_type (TrackType): 轨道类型
-            track_name (str, optional): 轨道名称. 仅在创建第一个同类型轨道时允许不指定.
-            mute (bool, optional): 轨道是否静音. 默认不静音.
-            relative_index (int, optional): 相对(同类型轨道的)图层位置, 越高越接近前景. 默认为0.
-            absolute_index (int, optional): 绝对图层位置, 越高越接近前景. 此参数将直接覆盖相应片段的`render_index`属性, 供有经验的用户使用.
-                此参数不能与`relative_index`同时使用.
-
-        Raises:
-            `NameError`: 已存在同类型轨道且未指定名称, 或已存在同名轨道
-        """
-
-        track = self._create_internal_track(track_type, track_name, mute, track_order=self._next_track_order())
-        if absolute_index is not None:
-            track._export_render_index_override = absolute_index
-        elif relative_index != 0:
-            track._export_render_index_override = track_type.value.render_index + relative_index
         return self
 
     def append_track(self, track_spec: TrackSpec) -> TrackRef:
@@ -407,16 +380,16 @@ class ScriptFile:
         return tuple(self.append_track(track_spec) for track_spec in track_specs)
 
     def insert_track(self, track_spec: TrackSpec, *,
-                     before_track: Optional[Union[TrackRef, ImportedTrack]] = None,
-                     after_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                     under_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                     over_track: Optional[Union[TrackRef, ImportedTrack]] = None,
                      at_index: Optional[int] = None) -> TrackRef:
         """将一个新轨道插入到指定位置
 
         Args:
             track_spec (`TrackSpec`): 待插入轨道的描述对象
-            before_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道之前
-            after_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道之后
-            at_index (`int`, optional): 插入到当前完整轨道顺序中的指定下标，可取 `[0, 当前轨道数]`
+            under_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道的背景侧；新轨道会被该轨道遮住
+            over_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道的前景侧；新轨道会盖住该轨道
+            at_index (`int`, optional): 插入到当前完整轨道顺序中的指定下标；`0` 表示最底层，`len(当前轨道数)` 表示最上层
 
         Returns:
             `TrackRef`: 新挂载轨道的公开引用
@@ -426,21 +399,21 @@ class ScriptFile:
             `IndexError`: `at_index` 超出允许范围
             `NameError`: 已存在同类型轨道且未指定名称, 或已存在同名轨道
         """
-        insert_at = self._resolve_insert_index(before_track, after_track, at_index)
+        insert_at = self._resolve_insert_index(under_track, over_track, at_index)
         track = self._insert_internal_track(track_spec, insert_at)
         return self._track_to_ref(track)
 
     def insert_tracks(self, track_specs: Sequence[TrackSpec], *,
-                      before_track: Optional[Union[TrackRef, ImportedTrack]] = None,
-                      after_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                      under_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                      over_track: Optional[Union[TrackRef, ImportedTrack]] = None,
                       at_index: Optional[int] = None) -> Tuple[TrackRef, ...]:
         """将多个新轨道作为一个顺序块插入到指定位置
 
         Args:
             track_specs (`Sequence[TrackSpec]`): 待插入轨道描述列表
-            before_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道之前
-            after_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道之后
-            at_index (`int`, optional): 插入到当前完整轨道顺序中的指定下标，可取 `[0, 当前轨道数]`
+            under_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道的背景侧；新轨道会被该轨道遮住
+            over_track (`TrackRef` or `ImportedTrack`, optional): 插入到指定轨道的前景侧；新轨道会盖住该轨道
+            at_index (`int`, optional): 插入到当前完整轨道顺序中的指定下标；`0` 表示最底层，`len(当前轨道数)` 表示最上层
 
         Returns:
             `Tuple[TrackRef, ...]`: 新挂载轨道的公开引用元组，顺序与输入保持一致
@@ -450,7 +423,7 @@ class ScriptFile:
             `IndexError`: `at_index` 超出允许范围
             `NameError`: 某个轨道描述与现有轨道命名规则冲突
         """
-        insert_at = self._resolve_insert_index(before_track, after_track, at_index)
+        insert_at = self._resolve_insert_index(under_track, over_track, at_index)
         refs: List[TrackRef] = []
         for offset, track_spec in enumerate(track_specs):
             refs.append(self._track_to_ref(self._insert_internal_track(track_spec, insert_at + offset)))
@@ -619,13 +592,14 @@ class ScriptFile:
 
         Args:
             srt_path (`str`): SRT文件路径
-            track_name (`str`): 导入到的文本轨道名称, 若不存在则自动创建
+            track_name (`str`): 导入到的文本轨道名称, 若不存在则自动创建并插入到当前视频/文本轨的前景侧
             style_reference (`TextSegment`, optional): 作为样式参考的文本片段, 若提供则使用其样式.
             time_offset (`Union[str, float]`, optional): 字幕整体时间偏移, 单位为微秒, 默认为0.
             text_style (`TextStyle`, optional): 字幕样式, 默认模仿剪映导入字幕时的样式, 会被`style_reference`覆盖.
             clip_settings (`ClipSettings`, optional): 图像调节设置, 默认模仿剪映导入字幕时的设置, 会覆盖`style_reference`的设置除非指定为`None`.
 
         Raises:
+            `ValueError`: 未提供样式参考时缺少 `clip_settings`
             `NameError`: 已存在同名轨道
             `TypeError`: 轨道类型不匹配
         """
@@ -634,7 +608,16 @@ class ScriptFile:
 
         time_offset = tim(time_offset)
         if track_name not in self.tracks:
-            self.add_track(TrackType.text, track_name, relative_index=999)  # 在所有文本轨道的最上层
+            track_list = self._list_all_tracks_in_order()
+            insert_after: Optional[int] = None
+            for index in range(len(track_list) - 1, -1, -1):
+                if track_list[index].track_type in [TrackType.video, TrackType.text]:
+                    insert_after = index
+                    break
+            if insert_after is None:
+                self.append_track(TrackSpec(TrackType.text, track_name))
+            else:
+                self.insert_track(TrackSpec(TrackType.text, track_name), at_index=insert_after + 1)
 
         with open(srt_path, "r", encoding="utf-8-sig") as srt_file:
             lines = srt_file.readlines()
@@ -739,7 +722,10 @@ class ScriptFile:
 
     def import_track(self, source_file: "ScriptFile", track: EditableTrack, *,
                      offset: Union[str, int] = 0,
-                     new_name: Optional[str] = None, relative_index: Optional[int] = None) -> "ScriptFile":
+                     new_name: Optional[str] = None,
+                     under_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                     over_track: Optional[Union[TrackRef, ImportedTrack]] = None,
+                     at_index: Optional[int] = None) -> "ScriptFile":
         """将一个`EditableTrack`导入到当前`ScriptFile`中, 如从模板草稿中导入特定的文本或视频轨道到当前正在编辑的草稿文件中
 
         注意: 本方法会保留各片段及其素材的id, 因而不支持向同一草稿多次导入同一轨道
@@ -749,15 +735,23 @@ class ScriptFile:
             track (`EditableTrack`): 要导入的轨道, 可通过`get_imported_track`方法获取.
             offset (`str | int`, optional): 轨道的时间偏移量(微秒), 可以是整数微秒值或时间字符串(如"1s"). 默认不添加偏移.
             new_name (`str`, optional): 新轨道名称, 默认使用源轨道名称.
-            relative_index (`int`, optional): 相对索引，用于调整导入轨道的渲染层级. 默认保持原有层级.
+            under_track (`TrackRef` or `ImportedTrack`, optional): 导入到指定轨道的背景侧；若不提供任何定位参数，则默认追加到当前末尾
+            over_track (`TrackRef` or `ImportedTrack`, optional): 导入到指定轨道的前景侧
+            at_index (`int`, optional): 导入到当前完整轨道顺序中的指定下标；`0` 表示最底层，`len(当前轨道数)` 表示最上层
+
+        Raises:
+            `ValueError`: 指定了多个定位参数，或轨道引用不属于当前 `ScriptFile`
+            `IndexError`: `at_index` 超出允许范围
         """
-        # 直接拷贝原始轨道结构, 按需修改渲染层级
+        # 直接拷贝原始轨道结构
         imported_track = deepcopy(track)
-        if relative_index is not None:
-            imported_track._export_render_index_override = track.track_type.value.render_index + relative_index
         if new_name is not None:
             imported_track.name = new_name
-        imported_track.track_order = self._next_track_order()
+        if all(option is None for option in [under_track, over_track, at_index]):
+            insert_at = self._next_track_order()
+        else:
+            insert_at = self._resolve_insert_index(under_track, over_track, at_index)
+        imported_track.track_order = insert_at
 
         # 应用偏移量
         offset_us = tim(offset)
@@ -765,6 +759,7 @@ class ScriptFile:
             for seg in imported_track.segments:
                 seg.target_timerange.start = max(0, seg.target_timerange.start + offset_us)
         self.imported_tracks.append(imported_track)
+        self._reindex_track_orders(self._list_all_tracks_in_order())
 
         # 收集所有需要复制的素材ID
         material_ids = set()
@@ -1005,12 +1000,8 @@ class ScriptFile:
         track_list.sort(key=lambda track: track.track_order)
         track_exports = [track.export_json() for track in track_list]
         for export_index, (track, track_json) in enumerate(zip(track_list, track_exports)):
-            segment_render_index = track._export_render_index_override
-            if segment_render_index is None:
-                segment_render_index = export_index
-
             for segment_json in track_json["segments"]:
-                segment_json["render_index"] = segment_render_index
+                segment_json["render_index"] = export_index
                 segment_json["track_render_index"] = 0
 
         self.content["tracks"] = track_exports

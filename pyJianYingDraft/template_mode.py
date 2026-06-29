@@ -86,7 +86,6 @@ class ImportedTrack(BaseTrack):
         self.name = json_data.get("name", "")
         self.track_id = json_data["id"]
         self.track_order = track_order
-        self._export_render_index_override = None
 
         self.raw_data = deepcopy(json_data)
 

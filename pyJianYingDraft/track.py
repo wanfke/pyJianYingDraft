@@ -23,8 +23,6 @@ class TrackTypeMeta:
                         Type[EffectSegment], Type[FilterSegment],
                         Type[TextSegment], Type[StickerSegment], None]
     """与轨道关联的片段类型"""
-    render_index: int
-    """默认渲染顺序, 值越大越接近前景"""
     allow_modify: bool
     """当被导入时, 是否允许修改"""
 
@@ -35,14 +33,14 @@ class TrackType(Enum):
     变量名对应type属性, 值表示相应的轨道元数据
     """
 
-    video = TrackTypeMeta(VideoSegment, 0, True)
-    audio = TrackTypeMeta(AudioSegment, 0, True)
-    effect = TrackTypeMeta(EffectSegment, 10000, False)
-    filter = TrackTypeMeta(FilterSegment, 11000, False)
-    sticker = TrackTypeMeta(StickerSegment, 14000, False)
-    text = TrackTypeMeta(TextSegment, 15000, True)  # 原本是14000, 避免与sticker冲突改为15000
+    video = TrackTypeMeta(VideoSegment, True)
+    audio = TrackTypeMeta(AudioSegment, True)
+    effect = TrackTypeMeta(EffectSegment, False)
+    filter = TrackTypeMeta(FilterSegment, False)
+    sticker = TrackTypeMeta(StickerSegment, False)
+    text = TrackTypeMeta(TextSegment, True)
 
-    adjust = TrackTypeMeta(None, 0, False)
+    adjust = TrackTypeMeta(None, False)
     """仅供导入时使用, 不要尝试新建此类型的轨道"""
 
     @staticmethod
@@ -122,8 +120,6 @@ class BaseTrack(ABC):
     """轨道全局ID"""
     track_order: int
     """内部顺序, 值越大越靠后导出"""
-    _export_render_index_override: Optional[int]
-    """导出阶段的可选 render_index 覆盖值"""
 
     @abstractmethod
     def export_json(self) -> Dict[str, Any]: ...
@@ -146,7 +142,6 @@ class Track(BaseTrack, Generic[Seg_type]):
         self.name = name
         self.track_id = uuid.uuid4().hex
         self.track_order = track_order
-        self._export_render_index_override = None
 
         self.mute = mute
         self.segments = []

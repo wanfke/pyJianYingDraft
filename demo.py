@@ -13,15 +13,19 @@ assert os.path.exists(tutorial_asset_dir), f"未找到例程素材文件夹{os.p
 script = draft_folder.create_draft("demo", 1920, 1080, allow_replace=True)  # 1920x1080分辨率
 
 # 添加音频、视频和文本轨道
-script.add_track(draft.TrackType.audio).add_track(draft.TrackType.video).add_track(draft.TrackType.text)
+script.append_tracks([
+    draft.TrackSpec(draft.TrackType.audio),
+    draft.TrackSpec(draft.TrackType.video),
+    draft.TrackSpec(draft.TrackType.text),
+])
 
-# 创建音频片段（使用便捷构造，直接传入素材路径）
+# 创建音频片段
 audio_segment = draft.AudioSegment(os.path.join(tutorial_asset_dir, 'audio.mp3'),
                                    trange("0s", "5s"),  # 片段将位于轨道上的0s-5s（注意5s表示持续时长而非结束时间）
                                    volume=0.6)          # 音量设置为60%(-4.4dB)
 audio_segment.add_fade("1s", "0s")                      # 增加一个1s的淡入
 
-# 创建视频片段（使用便捷构造，直接传入素材路径）
+# 创建视频片段
 video_segment = draft.VideoSegment(os.path.join(tutorial_asset_dir, 'video.mp4'),
                                    trange("0s", "4.2s"))  # 片段将位于轨道上的0s-4.2s（取素材前4.2s内容，注意此处4.2s表示持续时长）
 video_segment.add_animation(IntroType.斜切)               # 添加一个入场动画"斜切"

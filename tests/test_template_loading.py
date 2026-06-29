@@ -225,3 +225,31 @@ def test_get_imported_track_uses_internal_order_for_indexing(tmp_path):
 
     assert script.get_imported_track(draft.TrackType.text, index=0).name == "text_a"
     assert script.get_imported_track(draft.TrackType.text, index=1).name == "text_b"
+
+
+def test_import_track_supports_explicit_insert_position(tmp_path):
+    source_path = _create_template_draft(tmp_path, "source_template")
+    source_path.write_bytes(b"custom payload")
+    source_folder = draft.DraftFolder(
+        str(tmp_path),
+        fallback_loader=lambda _: {
+            "duration": 123456,
+            "canvas_config": {"width": 1920, "height": 1080},
+            "tracks": [
+                {"id": "source-track-1", "type": "text", "name": "source_text", "segments": []},
+            ],
+        },
+    )
+    source_script = source_folder.load_template("source_template")
+
+    target_script = draft.ScriptFile(1920, 1080, 30, True)
+    anchor_ref = target_script.append_track(draft.TrackSpec(draft.TrackType.video, "video"))
+
+    target_script.import_track(
+        source_script,
+        source_script.get_imported_track(draft.TrackType.text, index=0),
+        under_track=anchor_ref,
+    )
+
+    dumped = parse_dump(target_script)
+    assert [track["name"] for track in dumped["tracks"]] == ["source_text", "video"]
