@@ -5,7 +5,7 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 from .exceptions import SegmentOverlap
 from .segment import BaseSegment
@@ -125,16 +125,13 @@ class BaseTrack(ABC):
     def export_json(self) -> Dict[str, Any]: ...
 
 
-Seg_type = TypeVar("Seg_type", bound=BaseSegment)
-
-
-class Track(BaseTrack, Generic[Seg_type]):
+class Track(BaseTrack):
     """非模板模式下的轨道"""
 
     mute: bool
     """是否静音"""
 
-    segments: List[Seg_type]
+    segments: List[BaseSegment]
     """该轨道包含的片段列表"""
 
     def __init__(self, track_type: TrackType, name: str, track_order: int, mute: bool):
@@ -154,15 +151,15 @@ class Track(BaseTrack, Generic[Seg_type]):
         return self.segments[-1].target_timerange.end
 
     @property
-    def accept_segment_type(self) -> Type[Seg_type]:
+    def accept_segment_type(self) -> Type[BaseSegment]:
         """返回该轨道允许的片段类型"""
         return self.track_type.value.segment_type  # type: ignore
 
-    def add_segment(self, segment: Seg_type) -> "Track[Seg_type]":
+    def add_segment(self, segment: BaseSegment) -> "Track":
         """向轨道中添加一个片段, 添加的片段必须匹配轨道类型且不与现有片段重叠
 
         Args:
-            segment (Seg_type): 要添加的片段
+            segment (`BaseSegment`): 要添加的片段
 
         Raises:
             `TypeError`: 新片段类型与轨道类型不匹配
