@@ -2,14 +2,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Sequence, Tuple, Union
 
+from .audio_segment import AudioSegment
 from .local_materials import AudioMaterial, VideoMaterial
 from .template_mode import EditableTrack, ImportedTrack
+from .text_segment import TextSegment
 from .track import BaseTrack, Track, TrackRef, TrackSpec
+from .video_segment import StickerSegment, VideoSegment
 
 if TYPE_CHECKING:
     from .script_material import ScriptMaterial
     from .segment import BaseSegment
-    from .text_segment import TextSegment
+
+
+AddableSegment = Union[VideoSegment, StickerSegment, AudioSegment, TextSegment]
 
 
 class ScriptFileProtocol(Protocol):
@@ -85,7 +90,7 @@ class ScriptFileProtocol(Protocol):
 
     def add_material(self, material: Union[VideoMaterial, AudioMaterial]) -> "ScriptFile": ...
 
-    def add_segment(self, segment: "BaseSegment", track: Optional[Union[str, TrackRef]] = None) -> "ScriptFile": ...
+    def add_segment(self, segment: AddableSegment, track: Optional[Union[str, TrackRef]] = None) -> "ScriptFile": ...
 
     def list_imported_tracks(self, track_type=None) -> Tuple[ImportedTrack, ...]: ...
 
