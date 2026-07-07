@@ -133,7 +133,9 @@ class AudioSegment(MediaSegment):
 
     def add_effect(self, effect_type: Union[AudioSceneEffectType, ToneEffectType, SpeechToSongType],
                    params: Optional[List[Optional[float]]] = None) -> "AudioSegment":
-        """为音频片段添加一个作用于整个片段的音频效果, 目前"声音成曲"效果不能自动被剪映所识别
+        """为音频片段添加一个作用于整个片段的音频效果
+
+        `"声音成曲"`效果在剪映5.9中不支持, 在较新的剪映版本中可触发后续处理链路.
 
         Args:
             effect_type (`AudioSceneEffectType` | `ToneEffectType` | `SpeechToSongType`): 音效类型, 一类音效只能添加一个.

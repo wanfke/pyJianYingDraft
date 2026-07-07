@@ -35,6 +35,7 @@
 | 本地音频素材与[时间控制](#素材截取与整体变速) | ✅ | 10.8 ✅ |
 | [音频淡入淡出](#音频淡入淡出)与音量 | ✅ | 10.8 ✅ |
 | [音频场景音效果](#添加片段特效) | ✅ | 10.8 ✅ |
+| [音频声音成曲效果](#添加片段特效) | ❌<br>不生效 | 10.8 ✅ |
 
 ### 轨道
 
@@ -568,7 +569,7 @@ script.add_segment(overlay_video, track="overlay")
 ### 特效、动画和滤镜
 #### 特效类型
 目前支持的**特效**类型由以下枚举类定义：
-- 音频：`AudioSceneEffectType`（场景音）
+- 音频：`AudioSceneEffectType`（场景音）、`SpeechToSongType`（声音成曲，**5.9下不生效**）
 - 视频：`VideoSceneEffectType`（画面特效）、`VideoCharacterEffectType`（人物特效）
 
 目前支持的**动画**类型由以下枚举类定义：
@@ -597,7 +598,12 @@ from pyJianYingDraft import VideoSceneEffectType
 video_segment.add_effect(VideoSceneEffectType.全息扫描,
                          [None, None, 100.0]) # 不设置前两个参数, 第三个参数（氛围）为100，其余参数也不设置
 ```
-音频片段的特效添加方法与视频片段相似
+音频片段的特效添加方法与视频片段相似。
+
+其中：
+- `AudioSceneEffectType`（场景音）可视为较稳定的草稿效果。
+- `SpeechToSongType`（声音成曲）不应视为纯静态 JSON 效果，其实际生效情况与剪映版本相关。
+  - 当前实测中，`SpeechToSongType` 在剪映 5.9 中虽可能显示为已识别的声音效果，但实际无效；在剪映 10.8 中则可生效。
 
 #### 添加片段滤镜
 滤镜的添加方法与特效类似，其使用的是`VideoSegment.add_filter()`方法。

@@ -6,6 +6,7 @@ from .effect_segment import EffectSegment, FilterSegment
 from .keyframe import KeyframeProperty
 from .local_materials import AudioMaterial, CropSettings, VideoMaterial
 from .metadata import AudioSceneEffectType
+from .metadata import SpeechToSongType
 from .metadata import FilterType, FontType, GroupAnimationType, IntroType, MaskType, MixModeType, OutroType
 from .metadata import TextIntro, TextLoopAnim, TextOutro, TransitionType
 from .metadata import VideoCharacterEffectType, VideoSceneEffectType
@@ -34,6 +35,7 @@ __all__ = [
     "TextOutro",
     "TextLoopAnim",
     "AudioSceneEffectType",
+    "SpeechToSongType",
     "VideoSceneEffectType",
     "VideoCharacterEffectType",
     "CropSettings",
