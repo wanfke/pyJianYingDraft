@@ -2,7 +2,10 @@ from .effect_meta import EffectEnum
 from .effect_meta import EffectMeta, EffectParam
 
 class ToneEffectType(EffectEnum):
-    """剪映自带的音频“音色”效果类型"""
+    """剪映自带的音频“音色”效果类型
+
+    当前主库按最小草稿结构导出此类效果，实测在剪映5.9与10.8中可生效。
+    """
 
     # 免费
     台湾小哥    = EffectMeta("台湾小哥", False, "7255565276819755576", "18149602", "8dd8889045e6c065177df791ddb3dfb8", [])

@@ -21,6 +21,8 @@ from .metadata import AudioSceneEffectType, ToneEffectType, SpeechToSongType
 class AudioEffect:
     """音频特效对象"""
 
+    effect_meta: Union[AudioSceneEffectType, ToneEffectType, SpeechToSongType]
+    """音效元数据"""
     name: str
     """特效名称"""
     effect_id: str
@@ -38,6 +40,7 @@ class AudioEffect:
                  params: Optional[List[Optional[float]]] = None):
         """根据给定的音效元数据及参数列表构造一个音频特效对象, params的范围是0~100"""
 
+        self.effect_meta = effect_meta
         self.name = effect_meta.value.name
         self.effect_id = uuid.uuid4().hex
         self.resource_id = effect_meta.value.resource_id
@@ -61,21 +64,26 @@ class AudioEffect:
         self.audio_adjust_params = effect_meta.value.parse_params(params)
 
     def export_json(self) -> Dict[str, Any]:
-        return {
+        json_dict = {
             "audio_adjust_params": [param.export_json() for param in self.audio_adjust_params],
+            "id": self.effect_id,
+            "name": self.name,
+            "resource_id": self.resource_id,
+            "type": "audio_effect"
+        }
+        if isinstance(self.effect_meta, ToneEffectType):
+            return json_dict
+
+        json_dict.update({
             "category_id": self.category_id,
             "category_name": self.category_name,
-            "id": self.effect_id,
             "is_ugc": False,
-            "name": self.name,
             "production_path": "",
-            "resource_id": self.resource_id,
             "speaker_id": "",
             "sub_type": self.category_index,
             "time_range": {"duration": 0, "start": 0},  # 似乎并未用到
-            "type": "audio_effect"
-            # 不导出path和constant_material_id
-        }
+        })
+        return json_dict
 
 class AudioSegment(MediaSegment):
     """安放在轨道上的一个音频片段"""
@@ -136,6 +144,7 @@ class AudioSegment(MediaSegment):
         """为音频片段添加一个作用于整个片段的音频效果
 
         `"声音成曲"`效果在剪映5.9中不支持, 在较新的剪映版本中可触发后续处理链路.
+        `"音色"`效果实测在剪映5.9与10.8中可生效.
 
         Args:
             effect_type (`AudioSceneEffectType` | `ToneEffectType` | `SpeechToSongType`): 音效类型, 一类音效只能添加一个.
