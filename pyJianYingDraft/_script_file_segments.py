@@ -90,6 +90,8 @@ class _ScriptFileSegmentOps:
                 self.materials.transitions.append(segment.transition)
             if segment.background_filling is not None:
                 self.materials.canvases.append(segment.background_filling)
+            if segment.chroma is not None and segment.chroma not in self.materials:
+                self.materials.chromas.append(segment.chroma)
             self.materials.speeds.append(segment.speed)
         elif isinstance(segment, StickerSegment):
             self.materials.stickers.append(segment.export_material())

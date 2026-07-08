@@ -6,7 +6,7 @@ from .audio_segment import AudioEffect, AudioFade
 from .local_materials import AudioMaterial, VideoMaterial
 from .segment import Speed
 from .text_segment import TextBubble
-from .video_segment import BackgroundFilling, Filter, MixMode, SegmentAnimations, Transition, VideoEffect
+from .video_segment import BackgroundFilling, Chroma, Filter, MixMode, SegmentAnimations, Transition, VideoEffect
 
 
 class ScriptMaterial:
@@ -29,6 +29,8 @@ class ScriptMaterial:
     """动画素材列表"""
     video_effects: List[VideoEffect]
     """视频特效列表"""
+    chromas: List[Chroma]
+    """色度抠图列表"""
 
     speeds: List[Speed]
     """变速列表"""
@@ -53,6 +55,7 @@ class ScriptMaterial:
         self.audio_fades = []
         self.animations = []
         self.video_effects = []
+        self.chromas = []
 
         self.speeds = []
         self.masks = []
@@ -68,7 +71,7 @@ class ScriptMaterial:
     def __contains__(self, item: Union[AudioFade, AudioEffect]) -> bool: ...
 
     @overload
-    def __contains__(self, item: Union[SegmentAnimations, VideoEffect, Transition, Filter]) -> bool: ...
+    def __contains__(self, item: Union[SegmentAnimations, VideoEffect, Chroma, Transition, Filter, MixMode]) -> bool: ...
 
     def __contains__(self, item) -> bool:
         if isinstance(item, VideoMaterial):
@@ -83,6 +86,8 @@ class ScriptMaterial:
             return item.animation_id in [ani.animation_id for ani in self.animations]
         if isinstance(item, VideoEffect):
             return item.global_id in [effect.global_id for effect in self.video_effects]
+        if isinstance(item, Chroma):
+            return item.global_id in [chroma.global_id for chroma in self.chromas]
         if isinstance(item, Transition):
             return item.global_id in [transition.global_id for transition in self.transitions]
         if isinstance(item, Filter):
@@ -101,7 +106,7 @@ class ScriptMaterial:
             "audios": [audio.export_json() for audio in self.audios],
             "beats": [],
             "canvases": [canvas.export_json() for canvas in self.canvases],
-            "chromas": [],
+            "chromas": [chroma.export_json() for chroma in self.chromas],
             "color_curves": [],
             "digital_humans": [],
             "drafts": [],
